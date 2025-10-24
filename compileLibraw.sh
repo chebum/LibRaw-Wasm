@@ -13,7 +13,7 @@ mkdir includes
 echo -e "\n==> Cloning LCMS from GitHub..."
 git clone https://github.com/mm2/Little-CMS.git lcms2
 cd lcms2
-glibtoolize
+libtoolize
 autoreconf -fi
 # 2) Configure and make with Emscripten
 emconfigure ./configure --host=wasm32-unknown-emscripten \
@@ -36,7 +36,7 @@ pushd LibRawSource
 
 echo -e "\n==> Generating configure script from configure.ac..."
 # Generate ./configure from configure.ac
-glibtoolize
+libtoolize
 autoreconf -i
 
 #---------------------------------------------------------------------------------
