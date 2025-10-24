@@ -31,11 +31,9 @@ public:
 			throw std::runtime_error("LibRaw not initialized");
 		}
 
-		// 1) Convert the JS buffer (Uint8Array) to a C++ std::vector<uint8_t>.
-		std::vector<uint8_t> buffer = toNativeVector(jsBuffer);
-
 		applySettings(settings);
 
+        buffer = toNativeVector(jsBuffer);
 		int ret = processor_->open_buffer((void*)buffer.data(), buffer.size());
 		if (ret != LIBRAW_SUCCESS) {
 			throw std::runtime_error("LibRaw: open_buffer() failed with code " + std::to_string(ret));
@@ -961,6 +959,7 @@ public:
 
 private:
 	LibRaw* processor_ = nullptr;
+    std::vector<uint8_t> buffer;
 	bool isUnpacked = false;
 
 	void applySettings(const val& settings) {
@@ -1134,18 +1133,27 @@ private:
 		}
 	}
 	// Convert a JS Uint8Array to a std::vector<uint8_t>
-	std::vector<uint8_t> toNativeVector(const val &jsBuffer) {
-		// Check for null/undefined
-		if (jsBuffer.isNull() || jsBuffer.isUndefined()) {
-			return {};
-		}
-		// Expecting a Uint8Array or something with a "length" property
-		size_t length = jsBuffer["length"].as<size_t>();
-		std::vector<uint8_t> buf(length);
-		for (size_t i = 0; i < length; i++) {
-			buf[i] = jsBuffer[i].as<uint8_t>();
-		}
-		return buf;
+	std::vector<uint8_t> toNativeVector(const val &jsBufLike) {
+        const val Uint8Array = val::global("Uint8Array");
+        const val ArrayBuffer = val::global("ArrayBuffer");
+
+        // Normalize to a Uint8Array, whether the input is ArrayBuffer or any ArrayBufferView
+        val u8 = jsBufLike.instanceof(Uint8Array)
+                 ? jsBufLike
+                 : (jsBufLike.instanceof(ArrayBuffer)
+                      ? Uint8Array.new_(jsBufLike)
+                      : Uint8Array.new_(jsBufLike["buffer"],
+                                        jsBufLike["byteOffset"],
+                                        jsBufLike["byteLength"]));
+
+        const size_t n = u8["byteLength"].as<size_t>();
+        std::vector<uint8_t> out(n);
+
+        // Create a Uint8Array view into WASM memory and copy JS -> WASM in one go
+        val wasmView = val(emscripten::typed_memory_view(out.size(), out.data()));
+        wasmView.call<void>("set", u8);   // single memcpy under the hood
+
+        return out;
 	}
 	void setStringMember(char*& dest, const std::string& value) {
 		if (dest) {
